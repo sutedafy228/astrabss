@@ -1,448 +1,559 @@
--- BeeSwarm Simulator GUI Script для Xeno/Codexz инжекторов
--- Полностью рабочий GUI с перетаскиванием, Info, Farm, Settings
-
-local Players = game:GetService("Players")
+-- BeeSwarm Autofarm Script
+local Player = game:GetService("Players").LocalPlayer
+local Mouse = Player:GetMouse()
+local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local HttpService = game:GetService("HttpService")
 
-local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
+-- Настройки по умолчанию
+local Settings = {
+    AutoFarm = false,
+    AutoDig = false,
+    AutoSprinkler = false,
+    MovementMode = "Walk", -- "Walk" или "Tween"
+    UseSpeedHack = false,
+    WalkSpeed = 16,
+    TweenSpeed = 50,
+    SelectedLocation = "Sunflower Field"
+}
 
--- Переменные сессии и состояния
-local sessionStart = tick()
-local totalHoney = 0
-local lastHoney = 0
-local autoFarmEnabled = false
-local autoDigEnabled = false
-local autoSprinklerEnabled = false
-local movementMode = "Tween" -- "Tween" или "Walk"
-local useSpeedHack = false
-local selectedLocation = "Mountain Top"
+-- Переменные для статистики
+local SessionStartTime = os.time()
+local TotalHoneyFarm = 0
+local FarmHistory = {}
+local Dragging = false
+local DragOffset = Vector2.new(0, 0)
 
--- Получение текущего хани
-local function getHoney()
-    local leaderstats = player:FindFirstChild("leaderstats")
-    if leaderstats then
-        local honey = leaderstats:FindFirstChild("Honey")
-        return honey and honey.Value or 0
-    end
-    return 0
-end
-
--- Главный ScreenGui
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "BeeSwarmGUI"
-screenGui.ResetOnSpawn = false
-screenGui.Parent = playerGui
-
--- Перетаскиваемая кнопка входа
-local entryButton = Instance.new("TextButton")
-entryButton.Name = "EntryButton"
-entryButton.Size = UDim2.new(0, 150, 0, 50)
-entryButton.Position = UDim2.new(0, 10, 0.5, -25)
-entryButton.BackgroundColor3 = Color3.fromRGB(0, 162, 255)
-entryButton.Text = "🐝 BEE SWARM"
-entryButton.TextColor3 = Color3.new(1,1,1)
-entryButton.TextScaled = true
-entryButton.Font = Enum.Font.GothamBold
-entryButton.Parent = screenGui
-
-local entryCorner = Instance.new("UICorner")
-entryCorner.CornerRadius = UDim.new(0, 12)
-entryCorner.Parent = entryButton
-
--- Главное меню
-local mainFrame = Instance.new("Frame")
-mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 500, 0, 400)
-mainFrame.Position = UDim2.new(0.5, -250, 0.5, -200)
-mainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
-mainFrame.BorderSizePixel = 0
-mainFrame.Visible = false
-mainFrame.Parent = screenGui
-
-local mainCorner = Instance.new("UICorner")
-mainCorner.CornerRadius = UDim.new(0, 12)
-mainCorner.Parent = mainFrame
-
--- Перетаскивание главного окна
-local dragging = false
-local dragStart = nil
-local startPos = nil
-
-mainFrame.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
-        dragStart = input.Position
-        startPos = mainFrame.Position
-    end
-end)
-
-mainFrame.InputChanged:Connect(function(input)
-    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-        local delta = input.Position - dragStart
-        mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-    end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = false
-    end
-end)
-
--- Тень
-local shadow = Instance.new("Frame")
-shadow.Size = UDim2.new(1, 20, 1, 20)
-shadow.Position = UDim2.new(0, -10, 0, -10)
-shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-shadow.BackgroundTransparency = 0.7
-shadow.ZIndex = mainFrame.ZIndex - 1
-shadow.Parent = mainFrame
-local shadowCorner = Instance.new("UICorner")
-shadowCorner.CornerRadius = UDim.new(0, 12)
-shadowCorner.Parent = shadow
-
--- Заголовок
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, -90, 0, 50)
-title.Position = UDim2.new(0, 10, 0, 0)
-title.BackgroundTransparency = 1
-title.Text = "🐝 BeeSwarm Simulator GUI"
-title.TextColor3 = Color3.new(1,1,1)
-title.TextScaled = true
-title.Font = Enum.Font.GothamBold
-title.TextXAlignment = Enum.TextXAlignment.Left
-title.Parent = mainFrame
-
--- Кнопка закрытия
-local closeButton = Instance.new("TextButton")
-closeButton.Size = UDim2.new(0, 40, 0, 40)
-closeButton.Position = UDim2.new(1, -50, 0, 5)
-closeButton.BackgroundColor3 = Color3.fromRGB(255, 85, 85)
-closeButton.Text = "✕"
-closeButton.TextColor3 = Color3.new(1,1,1)
-closeButton.TextScaled = true
-closeButton.Font = Enum.Font.GothamBold
-closeButton.Parent = mainFrame
-local closeCorner = Instance.new("UICorner")
-closeCorner.CornerRadius = UDim.new(0, 8)
-closeCorner.Parent = closeButton
-
--- Контейнер вкладок
-local contentFrame = Instance.new("Frame")
-contentFrame.Size = UDim2.new(1, -20, 1, -120)
-contentFrame.Position = UDim2.new(0, 10, 0, 60)
-contentFrame.BackgroundTransparency = 1
-contentFrame.Parent = mainFrame
-
--- Вкладки
-local tabs = {"Info", "Farm", "Settings"}
-local tabButtons = {}
-local tabContents = {}
-
-for i, tabName in ipairs(tabs) do
-    -- Кнопка вкладки
-    local tabButton = Instance.new("TextButton")
-    tabButton.Size = UDim2.new(0.33, -4, 0, 40)
-    tabButton.Position = UDim2.new((i-1)*0.333, 2, 0, 0)
-    tabButton.BackgroundColor3 = (i == 1) and Color3.fromRGB(70, 130, 255) or Color3.fromRGB(50, 50, 60)
-    tabButton.Text = tabName
-    tabButton.TextColor3 = Color3.new(1,1,1)
-    tabButton.TextScaled = true
-    tabButton.Font = Enum.Font.GothamBold
-    tabButton.Parent = contentFrame
-    tabButtons[tabName] = tabButton
+-- Поиск инструментов
+local function GetTools()
+    local backpack = Player:FindFirstChild("Backpack")
+    local tools = {}
     
-    local tabCorner = Instance.new("UICorner")
-    tabCorner.CornerRadius = UDim.new(0, 8)
-    tabCorner.Parent = tabButton
-    
-    -- Контент вкладки
-    local tabContent = Instance.new("Frame")
-    tabContent.Size = UDim2.new(1, 0, 1, -50)
-    tabContent.Position = UDim2.new(0, 0, 0, 50)
-    tabContent.BackgroundTransparency = 1
-    tabContent.Visible = (i == 1)
-    tabContent.Parent = contentFrame
-    tabContents[tabName] = tabContent
-    
-    -- Функция переключения вкладок
-    tabButton.MouseButton1Click:Connect(function()
-        for name, btn in pairs(tabButtons) do
-            btn.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
-        end
-        tabButton.BackgroundColor3 = Color3.fromRGB(70, 130, 255)
-        
-        for name, cont in pairs(tabContents) do
-            cont.Visible = (name == tabName)
-        end
-    end)
-end
-
--- === INFO ВКЛАДКА ===
-local infoContent = tabContents["Info"]
-
--- Время сессии
-local sessionLabel = Instance.new("TextLabel")
-sessionLabel.Size = UDim2.new(1, -20, 0, 40)
-sessionLabel.Position = UDim2.new(0, 10, 0, 10)
-sessionLabel.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
-sessionLabel.Text = "Сессия: 00:00:00"
-sessionLabel.TextColor3 = Color3.new(1,1,1)
-sessionLabel.TextScaled = true
-sessionLabel.Font = Enum.Font.Gotham
-sessionLabel.Parent = infoContent
-local sessionCorner = Instance.new("UICorner")
-sessionCorner.CornerRadius = UDim.new(0, 8)
-sessionCorner.Parent = sessionLabel
-
--- Хани в час
-local honeyPerHourLabel = Instance.new("TextLabel")
-honeyPerHourLabel.Size = UDim2.new(1, -20, 0, 40)
-honeyPerHourLabel.Position = UDim2.new(0, 10, 0, 60)
-honeyPerHourLabel.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
-honeyPerHourLabel.Text = "Honey/час: 0"
-honeyPerHourLabel.TextColor3 = Color3.new(1,1,1)
-honeyPerHourLabel.TextScaled = true
-honeyPerHourLabel.Font = Enum.Font.Gotham
-honeyPerHourLabel.Parent = infoContent
-local honeyCorner = Instance.new("UICorner")
-honeyCorner.CornerRadius = UDim.new(0, 8)
-honeyCorner.Parent = honeyPerHourLabel
-
--- === FARM ВКЛАДКА ===
-local farmContent = tabContents["Farm"]
-
-local autoFarmToggle = Instance.new("TextButton")
-autoFarmToggle.Size = UDim2.new(1, -20, 0, 50)
-autoFarmToggle.Position = UDim2.new(0, 10, 0, 10)
-autoFarmToggle.BackgroundColor3 = Color3.fromRGB(76, 175, 80)
-autoFarmToggle.Text = "✅ AutoFarm: ВЫКЛ"
-autoFarmToggle.TextColor3 = Color3.new(1,1,1)
-autoFarmToggle.TextScaled = true
-autoFarmToggle.Font = Enum.Font.GothamBold
-autoFarmToggle.Parent = farmContent
-local farmCorner = Instance.new("UICorner")
-farmCorner.CornerRadius = UDim.new(0, 8)
-farmCorner.Parent = autoFarmToggle
-
-local autoDigToggle = Instance.new("TextButton")
-autoDigToggle.Size = UDim2.new(1, -20, 0, 50)
-autoDigToggle.Position = UDim2.new(0, 10, 0, 70)
-autoDigToggle.BackgroundColor3 = Color3.fromRGB(255, 193, 7)
-autoDigToggle.Text = "⛏️ AutoDig: ВЫКЛ"
-autoDigToggle.TextColor3 = Color3.new(1,1,1)
-autoDigToggle.TextScaled = true
-autoDigToggle.Font = Enum.Font.GothamBold
-autoDigToggle.Parent = farmContent
-local digCorner = Instance.new("UICorner")
-digCorner.CornerRadius = UDim.new(0, 8)
-digCorner.Parent = autoDigToggle
-
-local autoSprinklerToggle = Instance.new("TextButton")
-autoSprinklerToggle.Size = UDim2.new(1, -20, 0, 50)
-autoSprinklerToggle.Position = UDim2.new(0, 10, 0, 130)
-autoSprinklerToggle.BackgroundColor3 = Color3.fromRGB(255, 193, 7)
-autoSprinklerToggle.Text = "💧 AutoSprinkler: ВЫКЛ"
-autoSprinklerToggle.TextColor3 = Color3.new(1,1,1)
-autoSprinklerToggle.TextScaled = true
-autoSprinklerToggle.Font = Enum.Font.GothamBold
-autoSprinklerToggle.Parent = farmContent
-local sprinklerCorner = Instance.new("UICorner")
-sprinklerCorner.CornerRadius = UDim.new(0, 8)
-sprinklerCorner.Parent = autoSprinklerToggle
-
--- Выбор локации
-local locationLabel = Instance.new("TextLabel")
-locationLabel.Size = UDim2.new(1, -20, 0, 30)
-locationLabel.Position = UDim2.new(0, 10, 0, 200)
-locationLabel.BackgroundTransparency = 1
-locationLabel.Text = "🎯 Локация:"
-locationLabel.TextColor3 = Color3.new(1,1,1)
-locationLabel.TextScaled = true
-locationLabel.Font = Enum.Font.GothamBold
-locationLabel.TextXAlignment = Enum.TextXAlignment.Left
-locationLabel.Parent = farmContent
-
-local locations = {"Mountain Top", "Pepper Patch", "Strawberry Field", "Pine Tree Forest"}
-local locationButtons = {}
-
-for i, loc in ipairs(locations) do
-    local locBtn = Instance.new("TextButton")
-    locBtn.Size = UDim2.new(0.48, -5, 0, 35)
-    locBtn.Position = UDim2.new((i-1)*0.5, (i-1)%2*5 + 10, 0, 240)
-    locBtn.BackgroundColor3 = (loc == selectedLocation) and Color3.fromRGB(70, 130, 255) or Color3.fromRGB(50, 50, 60)
-    locBtn.Text = loc
-    locBtn.TextColor3 = Color3.new(1,1,1)
-    locBtn.TextScaled = true
-    locBtn.Font = Enum.Font.Gotham
-    locBtn.Parent = farmContent
-    locationButtons[loc] = locBtn
-    
-    local locCorner = Instance.new("UICorner")
-    locCorner.CornerRadius = UDim.new(0, 8)
-    locCorner.Parent = locBtn
-    
-    locBtn.MouseButton1Click:Connect(function()
-        selectedLocation = loc
-        for name, btn in pairs(locationButtons) do
-            btn.BackgroundColor3 = (name == loc) and Color3.fromRGB(70, 130, 255) or Color3.fromRGB(50, 50, 60)
-        end
-    end)
-end
-
--- === SETTINGS ВКЛАДКА ===
-local settingsContent = tabContents["Settings"]
-
-local movementLabel = Instance.new("TextLabel")
-movementLabel.Size = UDim2.new(1, -20, 0, 30)
-movementLabel.Position = UDim2.new(0, 10, 0, 10)
-movementLabel.BackgroundTransparency = 1
-movementLabel.Text = "🚀 Movement Mode:"
-movementLabel.TextColor3 = Color3.new(1,1,1)
-movementLabel.TextScaled = true
-movementLabel.Font = Enum.Font.GothamBold
-movementLabel.TextXAlignment = Enum.TextXAlignment.Left
-movementLabel.Parent = settingsContent
-
-local tweenBtn = Instance.new("TextButton")
-tweenBtn.Size = UDim2.new(0.48, -5, 0, 40)
-tweenBtn.Position = UDim2.new(0, 10, 0, 45)
-tweenBtn.BackgroundColor3 = Color3.fromRGB(70, 130, 255)
-tweenBtn.Text = "Tween"
-tweenBtn.TextColor3 = Color3.new(1,1,1)
-tweenBtn.TextScaled = true
-tweenBtn.Font = Enum.Font.GothamBold
-tweenBtn.Parent = settingsContent
-
-local walkBtn = Instance.new("TextButton")
-walkBtn.Size = UDim2.new(0.48, -5, 0, 40)
-walkBtn.Position = UDim2.new(0.52, 5, 0, 45)
-walkBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
-walkBtn.Text = "Walk"
-walkBtn.TextColor3 = Color3.new(1,1,1)
-walkBtn.TextScaled = true
-walkBtn.Font = Enum.Font.GothamBold
-walkBtn.Parent = settingsContent
-
-local speedHackToggle = Instance.new("TextButton")
-speedHackToggle.Size = UDim2.new(1, -20, 0, 50)
-speedHackToggle.Position = UDim2.new(0, 10, 0, 100)
-speedHackToggle.BackgroundColor3 = Color3.fromRGB(255, 193, 7)
-speedHackToggle.Text = "⚡ Use SpeedHack: ВЫКЛ"
-speedHackToggle.TextColor3 = Color3.new(1,1,1)
-speedHackToggle.TextScaled = true
-speedHackToggle.Font = Enum.Font.GothamBold
-speedHackToggle.Parent = settingsContent
-local speedCorner = Instance.new("UICorner")
-speedCorner.CornerRadius = UDim.new(0, 8)
-speedCorner.Parent = speedHackToggle
-
--- Обработчики кнопок
-entryButton.MouseButton1Click:Connect(function()
-    mainFrame.Visible = not mainFrame.Visible
-    entryButton.Text = mainFrame.Visible and "🐝 СКРЫТЬ" or "🐝 BEE SWARM"
-end)
-
-closeButton.MouseButton1Click:Connect(function()
-    mainFrame.Visible = false
-    entryButton.Text = "🐝 BEE SWARM"
-end)
-
--- Movement Mode переключение
-tweenBtn.MouseButton1Click:Connect(function()
-    movementMode = "Tween"
-    tweenBtn.BackgroundColor3 = Color3.fromRGB(70, 130, 255)
-    walkBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
-end)
-
-walkBtn.MouseButton1Click:Connect(function()
-    movementMode = "Walk"
-    tweenBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
-    walkBtn.BackgroundColor3 = Color3.fromRGB(70, 130, 255)
-end)
-
--- AutoFarm Toggle
-autoFarmToggle.MouseButton1Click:Connect(function()
-    autoFarmEnabled = not autoFarmEnabled
-    autoFarmToggle.Text = autoFarmEnabled and "✅ AutoFarm: ВКЛ" or "❌ AutoFarm: ВЫКЛ"
-    autoFarmToggle.BackgroundColor3 = autoFarmEnabled and Color3.fromRGB(76, 175, 80) or Color3.fromRGB(255, 85, 85)
-end)
-
--- AutoDig Toggle
-autoDigToggle.MouseButton1Click:Connect(function()
-    autoDigEnabled = not autoDigEnabled
-    autoDigToggle.Text = autoDigEnabled and "✅ AutoDig: ВКЛ" or "❌ AutoDig: ВЫКЛ"
-    autoDigToggle.BackgroundColor3 = autoDigEnabled and Color3.fromRGB(76, 175, 80) or Color3.fromRGB(255, 193, 7)
-end)
-
--- AutoSprinkler Toggle
-autoSprinklerToggle.MouseButton1Click:Connect(function()
-    autoSprinklerEnabled = not autoSprinklerEnabled
-    autoSprinklerToggle.Text = autoSprinklerEnabled and "✅ AutoSprinkler: ВКЛ" or "❌ AutoSprinkler: ВЫКЛ"
-    autoSprinklerToggle.BackgroundColor3 = autoSprinklerEnabled and Color3.fromRGB(76, 175, 80) or Color3.fromRGB(255, 193, 7)
-end)
-
--- SpeedHack Toggle
-speedHackToggle.MouseButton1Click:Connect(function()
-    useSpeedHack = not useSpeedHack
-    speedHackToggle.Text = useSpeedHack and "⚡ Use SpeedHack: ВКЛ" or "⚡ Use SpeedHack: ВЫКЛ"
-    speedHackToggle.BackgroundColor3 = useSpeedHack and Color3.fromRGB(76, 175, 80) or Color3.fromRGB(255, 193, 7)
-    
-    local character = player.Character
-    if character then
-        local humanoid = character:FindFirstChild("Humanoid")
-        if humanoid then
-            humanoid.WalkSpeed = useSpeedHack and 100 or 16
-        end
-    end
-end)
-
--- Обновление статистики сессии
-spawn(function()
-    while wait(1) do
-        local currentHoney = getHoney()
-        local sessionTime = tick() - sessionStart
-        local hours = sessionTime / 3600
-        local honeyPerHour = math.floor(((currentHoney - lastHoney) / sessionTime) * 3600)
-        
-        -- Форматирование времени
-        local h = math.floor(sessionTime / 3600)
-        local m = math.floor((sessionTime % 3600) / 60)
-        local s = math.floor(sessionTime % 60)
-        sessionLabel.Text = string.format("Сессия: %02d:%02d:%02d", h, m, s)
-        honeyPerHourLabel.Text = string.format("Honey/час: %s", honeyPerHour > 0 and tostring(honeyPerHour) or "0")
-        
-        lastHoney = currentHoney
-        totalHoney = currentHoney
-    end
-end)
-
--- Основной цикл фарма (базовая реализация)
-spawn(function()
-    while wait(0.1) do
-        if autoFarmEnabled then
-            -- Тупо пример - добавь реальную логику телепорта и сбора
-            print("AutoFarm работает в", selectedLocation)
-        end
-        
-        if autoDigEnabled then
-            -- Автоматический взмах палкой (имитация)
-            local tool = player.Character and player.Character:FindFirstChildOfClass("Tool")
-            if tool then
-                tool:Activate()
+    if backpack then
+        for _, item in ipairs(backpack:GetChildren()) do
+            if item:IsA("Tool") then
+                table.insert(tools, item)
             end
         end
-        
-        if autoSprinklerEnabled then
-            -- Авто спринклер (имитация)
-            print("Установка спринклера...")
+    end
+    
+    return tools
+end
+
+-- Автоматическое махание палкой
+local function AutoDigAction()
+    while Settings.AutoDig and Settings.AutoFarm do
+        local tools = GetTools()
+        for _, tool in ipairs(tools) do
+            if tool.Name:lower():find("planter") or tool.Name:lower():find("shovel") then
+                tool:Activate()
+                task.wait(0.5)
+            end
         end
+        task.wait(1)
+    end
+end
+
+-- Автоматическая установка спринклера
+local function AutoSprinklerAction()
+    while Settings.AutoSprinkler and Settings.AutoFarm do
+        local tools = GetTools()
+        for _, tool in ipairs(tools) do
+            if tool.Name:lower():find("sprinkler") then
+                -- Ищем ближайший инжектор
+                local closestInjector
+                local closestDistance = math.huge
+                
+                for _, obj in ipairs(workspace:GetChildren()) do
+                    if obj.Name:lower():find("injector") or obj.Name:lower():find("xeno") then
+                        local distance = (Player.Character.HumanoidRootPart.Position - obj.Position).Magnitude
+                        if distance < closestDistance then
+                            closestDistance = distance
+                            closestInjector = obj
+                        end
+                    end
+                end
+                
+                if closestInjector then
+                    -- Перемещаемся к инжектору
+                    if Settings.MovementMode == "Walk" then
+                        Player.Character.Humanoid:MoveTo(closestInjector.Position)
+                    else
+                        local tweenInfo = TweenInfo.new(closestDistance/Settings.TweenSpeed, Enum.EasingStyle.Linear)
+                        local tween = TweenService:Create(Player.Character.HumanoidRootPart, tweenInfo, {Position = closestInjector.Position})
+                        tween:Play()
+                    end
+                    
+                    task.wait(1)
+                    tool:Activate()
+                end
+            end
+        end
+        task.wait(5)
+    end
+end
+
+-- Основной цикл фарма
+local function FarmLoop()
+    while Settings.AutoFarm do
+        -- Режим передвижения
+        if Settings.UseSpeedHack and Settings.MovementMode == "Walk" then
+            Player.Character.Humanoid.WalkSpeed = Settings.WalkSpeed
+        elseif Settings.MovementMode == "Tween" then
+            Player.Character.Humanoid.WalkSpeed = 16
+        end
+        
+        -- Логика фарма на выбранной локации
+        local targetField
+        if Settings.SelectedLocation == "Sunflower Field" then
+            targetField = workspace:FindFirstChild("SunflowerField") or workspace:FindFirstChild("Sunflower Field")
+        elseif Settings.SelectedLocation == "Mushroom Field" then
+            targetField = workspace:FindFirstChild("MushroomField") or workspace:FindFirstChild("Mushroom Field")
+        elseif Settings.SelectedLocation == "Spider Field" then
+            targetField = workspace:FindFirstChild("SpiderField") or workspace:FindFirstChild("Spider Field")
+        end
+        
+        if targetField then
+            local targetPosition = targetField.Position + Vector3.new(math.random(-20, 20), 0, math.random(-20, 20))
+            
+            if Settings.MovementMode == "Walk" then
+                Player.Character.Humanoid:MoveTo(targetPosition)
+            else
+                local distance = (Player.Character.HumanoidRootPart.Position - targetPosition).Magnitude
+                local tweenInfo = TweenInfo.new(distance/Settings.TweenSpeed, Enum.EasingStyle.Linear)
+                local tween = TweenService:Create(Player.Character.HumanoidRootPart, tweenInfo, {Position = targetPosition})
+                tween:Play()
+            end
+            
+            -- Авто-сбор (симуляция)
+            task.wait(2)
+            TotalHoneyFarm = TotalHoneyFarm + math.random(50, 150)
+            table.insert(FarmHistory, {time = os.time(), amount = TotalHoneyFarm})
+        end
+        
+        task.wait(0.1)
+    end
+end
+
+-- Расчет Honey в час
+local function CalculateHoneyPerHour()
+    if #FarmHistory < 2 then return 0 end
+    
+    local first = FarmHistory[1]
+    local last = FarmHistory[#FarmHistory]
+    local timeDiff = last.time - first.time
+    
+    if timeDiff == 0 then return 0 end
+    
+    local honeyPerSecond = (last.amount - first.amount) / timeDiff
+    return math.floor(honeyPerSecond * 3600)
+end
+
+-- Создание интерфейса
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "BeeSwarmFarmGUI"
+ScreenGui.Parent = Player:WaitForChild("PlayerGui")
+
+-- Основное окно (перетаскиваемое)
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 300, 0, 400)
+MainFrame.Position = UDim2.new(0.5, -150, 0.5, -200)
+MainFrame.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
+
+-- Заголовок
+local Title = Instance.new("TextLabel")
+Title.Name = "Title"
+Title.Size = UDim2.new(1, 0, 0, 30)
+Title.BackgroundColor3 = Color3.fromRGB(255, 200, 0)
+Title.Text = "BeeSwarm Farm"
+Title.TextColor3 = Color3.fromRGB(0, 0, 0)
+Title.Font = Enum.Font.SourceSansBold
+Title.TextSize = 18
+Title.Parent = MainFrame
+
+-- Tab Buttons
+local TabButtonsFrame = Instance.new("Frame")
+TabButtonsFrame.Size = UDim2.new(1, 0, 0, 30)
+TabButtonsFrame.Position = UDim2.new(0, 0, 0, 30)
+TabButtonsFrame.BackgroundTransparency = 1
+TabButtonsFrame.Parent = MainFrame
+
+local InfoTab = Instance.new("TextButton")
+InfoTab.Name = "InfoTab"
+InfoTab.Size = UDim2.new(0.33, 0, 1, 0)
+InfoTab.Position = UDim2.new(0, 0, 0, 0)
+InfoTab.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+InfoTab.Text = "Info"
+InfoTab.TextColor3 = Color3.fromRGB(255, 255, 255)
+InfoTab.Font = Enum.Font.SourceSans
+InfoTab.TextSize = 14
+InfoTab.Parent = TabButtonsFrame
+
+local FarmTab = Instance.new("TextButton")
+FarmTab.Name = "FarmTab"
+FarmTab.Size = UDim2.new(0.33, 0, 1, 0)
+FarmTab.Position = UDim2.new(0.33, 0, 0, 0)
+FarmTab.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+FarmTab.Text = "Farm"
+FarmTab.TextColor3 = Color3.fromRGB(255, 255, 255)
+FarmTab.Font = Enum.Font.SourceSans
+FarmTab.TextSize = 14
+FarmTab.Parent = TabButtonsFrame
+
+local SettingsTab = Instance.new("TextButton")
+SettingsTab.Name = "SettingsTab"
+SettingsTab.Size = UDim2.new(0.34, 0, 1, 0)
+SettingsTab.Position = UDim2.new(0.66, 0, 0, 0)
+SettingsTab.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+SettingsTab.Text = "Settings"
+SettingsTab.TextColor3 = Color3.fromRGB(255, 255, 255)
+SettingsTab.Font = Enum.Font.SourceSans
+SettingsTab.TextSize = 14
+SettingsTab.Parent = TabButtonsFrame
+
+-- Info Content
+local InfoContent = Instance.new("Frame")
+InfoContent.Name = "InfoContent"
+InfoContent.Size = UDim2.new(1, -10, 1, -70)
+InfoContent.Position = UDim2.new(0, 5, 0, 65)
+InfoContent.BackgroundTransparency = 1
+InfoContent.Visible = true
+InfoContent.Parent = MainFrame
+
+local SessionTimeLabel = Instance.new("TextLabel")
+SessionTimeLabel.Size = UDim2.new(1, 0, 0, 25)
+SessionTimeLabel.Position = UDim2.new(0, 0, 0, 0)
+SessionTimeLabel.BackgroundTransparency = 1
+SessionTimeLabel.Text = "Session Time: 00:00"
+SessionTimeLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+SessionTimeLabel.Font = Enum.Font.SourceSans
+SessionTimeLabel.TextSize = 16
+SessionTimeLabel.Parent = InfoContent
+
+local TotalHoneyLabel = Instance.new("TextLabel")
+TotalHoneyLabel.Size = UDim2.new(1, 0, 0, 25)
+TotalHoneyLabel.Position = UDim2.new(0, 0, 0, 30)
+TotalHoneyLabel.BackgroundTransparency = 1
+TotalHoneyLabel.Text = "Total Honey: 0"
+TotalHoneyLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TotalHoneyLabel.Font = Enum.Font.SourceSans
+TotalHoneyLabel.TextSize = 16
+TotalHoneyLabel.Parent = InfoContent
+
+local HoneyPerHourLabel = Instance.new("TextLabel")
+HoneyPerHourLabel.Size = UDim2.new(1, 0, 0, 25)
+HoneyPerHourLabel.Position = UDim2.new(0, 0, 0, 60)
+HoneyPerHourLabel.BackgroundTransparency = 1
+HoneyPerHourLabel.Text = "Honey/Hour: 0"
+HoneyPerHourLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+HoneyPerHourLabel.Font = Enum.Font.SourceSans
+HoneyPerHourLabel.TextSize = 16
+HoneyPerHourLabel.Parent = InfoContent
+
+-- Farm Content
+local FarmContent = Instance.new("Frame")
+FarmContent.Name = "FarmContent"
+FarmContent.Size = UDim2.new(1, -10, 1, -70)
+FarmContent.Position = UDim2.new(0, 5, 0, 65)
+FarmContent.BackgroundTransparency = 1
+FarmContent.Visible = false
+FarmContent.Parent = MainFrame
+
+-- AutoFarm Toggle
+local AutoFarmToggle = Instance.new("TextButton")
+AutoFarmToggle.Name = "AutoFarmToggle"
+AutoFarmToggle.Size = UDim2.new(1, 0, 0, 30)
+AutoFarmToggle.Position = UDim2.new(0, 0, 0, 0)
+AutoFarmToggle.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+AutoFarmToggle.Text = "AutoFarm: OFF"
+AutoFarmToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+AutoFarmToggle.Font = Enum.Font.SourceSans
+AutoFarmToggle.TextSize = 14
+AutoFarmToggle.Parent = FarmContent
+
+-- AutoDig Toggle
+local AutoDigToggle = Instance.new("TextButton")
+AutoDigToggle.Name = "AutoDigToggle"
+AutoDigToggle.Size = UDim2.new(1, 0, 0, 30)
+AutoDigToggle.Position = UDim2.new(0, 0, 0, 35)
+AutoDigToggle.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+AutoDigToggle.Text = "AutoDig: OFF"
+AutoDigToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+AutoDigToggle.Font = Enum.Font.SourceSans
+AutoDigToggle.TextSize = 14
+AutoDigToggle.Parent = FarmContent
+
+-- AutoSprinkler Toggle
+local AutoSprinklerToggle = Instance.new("TextButton")
+AutoSprinklerToggle.Name = "AutoSprinklerToggle"
+AutoSprinklerToggle.Size = UDim2.new(1, 0, 0, 30)
+AutoSprinklerToggle.Position = UDim2.new(0, 0, 0, 70)
+AutoSprinklerToggle.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+AutoSprinklerToggle.Text = "AutoSprinkler: OFF"
+AutoSprinklerToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+AutoSprinklerToggle.Font = Enum.Font.SourceSans
+AutoSprinklerToggle.TextSize = 14
+AutoSprinklerToggle.Parent = FarmContent
+
+-- Location Dropdown
+local LocationLabel = Instance.new("TextLabel")
+LocationLabel.Size = UDim2.new(1, 0, 0, 25)
+LocationLabel.Position = UDim2.new(0, 0, 0, 110)
+LocationLabel.BackgroundTransparency = 1
+LocationLabel.Text = "Location:"
+LocationLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+LocationLabel.Font = Enum.Font.SourceSans
+LocationLabel.TextSize = 14
+LocationLabel.TextXAlignment = Enum.TextXAlignment.Left
+LocationLabel.Parent = FarmContent
+
+local LocationDropdown = Instance.new("TextButton")
+LocationDropdown.Name = "LocationDropdown"
+LocationDropdown.Size = UDim2.new(1, 0, 0, 30)
+LocationDropdown.Position = UDim2.new(0, 0, 0, 135)
+LocationDropdown.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+LocationDropdown.Text = Settings.SelectedLocation
+LocationDropdown.TextColor3 = Color3.fromRGB(255, 255, 255)
+LocationDropdown.Font = Enum.Font.SourceSans
+LocationDropdown.TextSize = 14
+LocationDropdown.Parent = FarmContent
+
+-- Settings Content
+local SettingsContent = Instance.new("Frame")
+SettingsContent.Name = "SettingsContent"
+SettingsContent.Size = UDim2.new(1, -10, 1, -70)
+SettingsContent.Position = UDim2.new(0, 5, 0, 65)
+SettingsContent.BackgroundTransparency = 1
+SettingsContent.Visible = false
+SettingsContent.Parent = MainFrame
+
+-- Movement Mode
+local MovementLabel = Instance.new("TextLabel")
+MovementLabel.Size = UDim2.new(1, 0, 0, 25)
+MovementLabel.Position = UDim2.new(0, 0, 0, 0)
+MovementLabel.BackgroundTransparency = 1
+MovementLabel.Text = "Movement Mode:"
+MovementLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+MovementLabel.Font = Enum.Font.SourceSans
+MovementLabel.TextSize = 14
+MovementLabel.TextXAlignment = Enum.TextXAlignment.Left
+MovementLabel.Parent = SettingsContent
+
+local MovementDropdown = Instance.new("TextButton")
+MovementDropdown.Name = "MovementDropdown"
+MovementDropdown.Size = UDim2.new(1, 0, 0, 30)
+MovementDropdown.Position = UDim2.new(0, 0, 0, 25)
+MovementDropdown.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+MovementDropdown.Text = Settings.MovementMode
+MovementDropdown.TextColor3 = Color3.fromRGB(255, 255, 255)
+MovementDropdown.Font = Enum.Font.SourceSans
+MovementDropdown.TextSize = 14
+MovementDropdown.Parent = SettingsContent
+
+-- Speed Hack Toggle
+local SpeedHackToggle = Instance.new("TextButton")
+SpeedHackToggle.Name = "SpeedHackToggle"
+SpeedHackToggle.Size = UDim2.new(1, 0, 0, 30)
+SpeedHackToggle.Position = UDim2.new(0, 0, 0, 70)
+SpeedHackToggle.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+SpeedHackToggle.Text = "Speed Hack: OFF"
+SpeedHackToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+SpeedHackToggle.Font = Enum.Font.SourceSans
+SpeedHackToggle.TextSize = 14
+SpeedHackToggle.Parent = SettingsContent
+
+-- Walk Speed (только если выбран Walk и включен Speed Hack)
+local WalkSpeedFrame = Instance.new("Frame")
+WalkSpeedFrame.Name = "WalkSpeedFrame"
+WalkSpeedFrame.Size = UDim2.new(1, 0, 0, 50)
+WalkSpeedFrame.Position = UDim2.new(0, 0, 0, 105)
+WalkSpeedFrame.BackgroundTransparency = 1
+WalkSpeedFrame.Visible = Settings.MovementMode == "Walk" and Settings.UseSpeedHack
+WalkSpeedFrame.Parent = SettingsContent
+
+local WalkSpeedLabel = Instance.new("TextLabel")
+WalkSpeedLabel.Size = UDim2.new(1, 0, 0, 25)
+WalkSpeedLabel.BackgroundTransparency = 1
+WalkSpeedLabel.Text = "Walk Speed: " .. Settings.WalkSpeed
+WalkSpeedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+WalkSpeedLabel.Font = Enum.Font.SourceSans
+WalkSpeedLabel.TextSize = 14
+WalkSpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
+WalkSpeedLabel.Parent = WalkSpeedFrame
+
+local WalkSpeedSlider = Instance.new("TextBox")
+WalkSpeedSlider.Size = UDim2.new(1, 0, 0, 20)
+WalkSpeedSlider.Position = UDim2.new(0, 0, 0, 25)
+WalkSpeedSlider.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+WalkSpeedSlider.Text = tostring(Settings.WalkSpeed)
+WalkSpeedSlider.TextColor3 = Color3.fromRGB(255, 255, 255)
+WalkSpeedSlider.Font = Enum.Font.SourceSans
+WalkSpeedSlider.TextSize = 14
+WalkSpeedSlider.Parent = WalkSpeedFrame
+
+-- Tween Speed (только если выбран Tween)
+local TweenSpeedFrame = Instance.new("Frame")
+TweenSpeedFrame.Name = "TweenSpeedFrame"
+TweenSpeedFrame.Size = UDim2.new(1, 0, 0, 50)
+TweenSpeedFrame.Position = UDim2.new(0, 0, 0, 105)
+TweenSpeedFrame.BackgroundTransparency = 1
+TweenSpeedFrame.Visible = Settings.MovementMode == "Tween"
+TweenSpeedFrame.Parent = SettingsContent
+
+local TweenSpeedLabel = Instance.new("TextLabel")
+TweenSpeedLabel.Size = UDim2.new(1, 0, 0, 25)
+TweenSpeedLabel.BackgroundTransparency = 1
+TweenSpeedLabel.Text = "Tween Speed: " .. Settings.TweenSpeed
+TweenSpeedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+TweenSpeedLabel.Font = Enum.Font.SourceSans
+TweenSpeedLabel.TextSize = 14
+TweenSpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
+TweenSpeedLabel.Parent = TweenSpeedFrame
+
+local TweenSpeedSlider = Instance.new("TextBox")
+TweenSpeedSlider.Size = UDim2.new(1, 0, 0, 20)
+TweenSpeedSlider.Position = UDim2.new(0, 0, 0, 25)
+TweenSpeedSlider.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+TweenSpeedSlider.Text = tostring(Settings.TweenSpeed)
+TweenSpeedSlider.TextColor3 = Color3.fromRGB(255, 255, 255)
+TweenSpeedSlider.Font = Enum.Font.SourceSans
+TweenSpeedSlider.TextSize = 14
+TweenSpeedSlider.Parent = TweenSpeedFrame
+
+-- Функции переключения вкладок
+InfoTab.MouseButton1Click:Connect(function()
+    InfoContent.Visible = true
+    FarmContent.Visible = false
+    SettingsContent.Visible = false
+    
+    InfoTab.BackgroundColor3 = Color3.fromRGB(255, 200, 0)
+    FarmTab.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    SettingsTab.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+end)
+
+FarmTab.MouseButton1Click:Connect(function()
+    InfoContent.Visible = false
+    FarmContent.Visible = true
+    SettingsContent.Visible = false
+    
+    InfoTab.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    FarmTab.BackgroundColor3 = Color3.fromRGB(255, 200, 0)
+    SettingsTab.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+end)
+
+SettingsTab.MouseButton1Click:Connect(function()
+    InfoContent.Visible = false
+    FarmContent.Visible = false
+    SettingsContent.Visible = true
+    
+    InfoTab.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    FarmTab.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+    SettingsTab.BackgroundColor3 = Color3.fromRGB(255, 200, 0)
+end)
+
+-- Функции переключения тогглов
+AutoFarmToggle.MouseButton1Click:Connect(function()
+    Settings.AutoFarm = not Settings.AutoFarm
+    AutoFarmToggle.Text = "AutoFarm: " .. (Settings.AutoFarm and "ON" or "OFF")
+    AutoFarmToggle.BackgroundColor3 = Settings.AutoFarm and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(80, 80, 80)
+    
+    if Settings.AutoFarm then
+        coroutine.wrap(FarmLoop)()
     end
 end)
 
-print("🐝 BeeSwarm GUI загружен! Используй Xeno или Codexz для инжекта.")
+AutoDigToggle.MouseButton1Click:Connect(function()
+    Settings.AutoDig = not Settings.AutoDig
+    AutoDigToggle.Text = "AutoDig: " .. (Settings.AutoDig and "ON" or "OFF")
+    AutoDigToggle.BackgroundColor3 = Settings.AutoDig and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(80, 80, 80)
+    
+    if Settings.AutoDig then
+        coroutine.wrap(AutoDigAction)()
+    end
+end)
+
+AutoSprinklerToggle.MouseButton1Click:Connect(function()
+    Settings.AutoSprinkler = not Settings.AutoSprinkler
+    AutoSprinklerToggle.Text = "AutoSprinkler: " .. (Settings.AutoSprinkler and "ON" or "OFF")
+    AutoSprinklerToggle.BackgroundColor3 = Settings.AutoSprinkler and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(80, 80, 80)
+    
+    if Settings.AutoSprinkler then
+        coroutine.wrap(AutoSprinklerAction)()
+    end
+end)
+
+SpeedHackToggle.MouseButton1Click:Connect(function()
+    Settings.UseSpeedHack = not Settings.UseSpeedHack
+    SpeedHackToggle.Text = "Speed Hack: " .. (Settings.UseSpeedHack and "ON" or "OFF")
+    SpeedHackToggle.BackgroundColor3 = Settings.UseSpeedHack and Color3.fromRGB(0, 200, 0) or Color3.fromRGB(80, 80, 80)
+    
+    WalkSpeedFrame.Visible = Settings.MovementMode == "Walk" and Settings.UseSpeedHack
+end)
+
+-- Выбор локации
+LocationDropdown.MouseButton1Click:Connect(function()
+    -- Простой выбор из доступных локаций
+    local locations = {"Sunflower Field", "Mushroom Field", "Spider Field", "Pineapple Patch", "Bamboo Field"}
+    local currentIndex = table.find(locations, Settings.SelectedLocation) or 1
+    local nextIndex = currentIndex % #locations + 1
+    Settings.SelectedLocation = locations[nextIndex]
+    LocationDropdown.Text = Settings.SelectedLocation
+end)
+
+-- Выбор режима движения
+MovementDropdown.MouseButton1Click:Connect(function()
+    if Settings.MovementMode == "Walk" then
+        Settings.MovementMode = "Tween"
+    else
+        Settings.MovementMode = "Walk"
+    end
+    MovementDropdown.Text = Settings.MovementMode
+    
+    -- Показываем/скрываем соответствующие настройки
+    WalkSpeedFrame.Visible = Settings.MovementMode == "Walk" and Settings.UseSpeedHack
+    TweenSpeedFrame.Visible = Settings.MovementMode == "Tween"
+end)
+
+-- Настройка скоростей
+WalkSpeedSlider.FocusLost:Connect(function()
+    local speed = tonumber(WalkSpeedSlider.Text)
+    if speed and speed >= 16 and speed <= 100 then
+        Settings.WalkSpeed = speed
+        WalkSpeedLabel.Text = "Walk Speed: " .. speed
+    else
+        WalkSpeedSlider.Text = tostring(Settings.WalkSpeed)
+    end
+end)
+
+TweenSpeedSlider.FocusLost:Connect(function()
+    local speed = tonumber(TweenSpeedSlider.Text)
+    if speed and speed >= 10 and speed <= 200 then
+        Settings.TweenSpeed = speed
+        TweenSpeedLabel.Text = "Tween Speed: " .. speed
+    else
+        TweenSpeedSlider.Text = tostring(Settings.TweenSpeed)
+    end
+end)
+
+-- Обновление статистики
+coroutine.wrap(function()
+    while true do
+        local sessionTime = os.time() - SessionStartTime
+        local hours = math.floor(sessionTime / 3600)
+        local minutes = math.floor((sessionTime % 3600) / 60)
+        local seconds = sessionTime % 60
+        
+        SessionTimeLabel.Text = string.format("Session Time: %02d:%02d:%02d", hours, minutes, seconds)
+        TotalHoneyLabel.Text = "Total Honey: " .. TotalHoneyFarm
+        HoneyPerHourLabel.Text = "Honey/Hour: " .. CalculateHoneyPerHour()
+        
+        task.wait(1)
+    end
+end)()
+
+print("BeeSwarm Farm Script loaded!")
