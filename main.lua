@@ -10,7 +10,7 @@ local TweenService = game:GetService("TweenService")
 -- Настройки по умолчанию
 local Settings = {
     AutoFarm = false,
-    SelectedLocation = "Dandlion",
+    SelectedLocation = "Dandelion",
     FlySpeed = 9, -- От 6 до 12 (6=8, 7=16, ..., 12=56)
     EnableWalkSpeed = false,
     WalkSpeed = 60, -- От 40 до 80
