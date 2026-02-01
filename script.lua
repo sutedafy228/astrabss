@@ -192,4 +192,4 @@ UserInputService.InputBegan:Connect(function(input)
     end
 end)
 
-print("🌟 ASTRA STAR JELLY PREMIUM loaded! PUSHA DESIGN! ✨")
+print("🌟 ASTRA STAR JELLY PREMIUM loaded! ✨")
