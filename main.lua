@@ -10,14 +10,15 @@ local TweenService = game:GetService("TweenService")
 -- Настройки по умолчанию
 local Settings = {
     AutoFarm = false,
-    SelectedLocation = "star 1",
+    SelectedLocation = "Dandlion",
     FlySpeed = 9, -- От 6 до 12 (6=8, 7=16, ..., 12=56)
     EnableWalkSpeed = false,
     WalkSpeed = 60, -- От 40 до 80
     Locations = {
-        ["star 1"] = Vector3.new(-412.21, 17.17, 466.99),
-        ["star 2"] = Vector3.new(-436.20, 93.26, 49.28),
-        ["star 3"] = Vector3.new(-200.50, 50.25, 300.75)
+        ["Dandelion"] = Vector3.new(-28.87, 4.00, 218.30),
+        ["Sunflower"] = Vector3.new(-214.57, 4.00, 186.22),
+        ["Mushroom"] = Vector3.new(-93.44, 4.00, 113.08)
+        ["BlueFlower"] = Vector3.new(143.97, 4.00, 100.12)
     }
 }
 
